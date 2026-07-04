@@ -1,0 +1,790 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VisionScan AI • Universal Scanner</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.17.0/dist/tf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&amp;family=Space+Grotesk:wght@500;600&amp;display=swap');
+  
+  :root {
+    --primary: #00f5ff;
+  }
+  
+  body {
+    font-family: 'Inter', system_ui, sans-serif;
+  }
+  
+  .font-display {
+    font-family: 'Space Grotesk', 'Inter', sans-serif;
+    font-weight: 600;
+  }
+
+  .scan-line {
+    position: relative;
+    overflow: hidden;
+  }
+  
+  .scan-line::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 4px;
+    background: linear-gradient(to bottom, transparent, #00f5ff, transparent);
+    animation: scan 2.5s linear infinite;
+    opacity: 0.6;
+  }
+
+  @keyframes scan {
+    0% { top: -10%; }
+    100% { top: 110%; }
+  }
+
+  .neon-text {
+    text-shadow: 0 0 10px rgb(0 245 255 / 0.5);
+  }
+
+  .result-card {
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .detection-box {
+    position: absolute;
+    border: 3px solid #00f5ff;
+    box-shadow: 0 0 0 1px rgba(0, 245, 255, 0.3);
+    pointer-events: none;
+  }
+
+  .tech-gradient {
+    background: linear-gradient(135deg, #0f172a 0%, #1e1135 100%);
+  }
+
+  .section {
+    display: none;
+  }
+  
+  .section.active {
+    display: block;
+  }
+
+  .nav-active {
+    color: #00f5ff;
+    border-bottom: 2px solid #00f5ff;
+  }
+
+  .confidence-bar {
+    height: 8px;
+    background: linear-gradient(to right, #00f5ff, #a855f7);
+    border-radius: 9999px;
+    transition: width 1s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  .medical-disclaimer {
+    background: #450a0a;
+    border: 1px solid #f87171;
+  }
+</style>
+</head>
+<body class="bg-slate-950 text-slate-200">
+  <!-- Navbar -->
+  <nav class="bg-slate-900 border-b border-slate-800 sticky top-0 z-50">
+    <div class="max-w-screen-xl mx-auto px-6 py-4 flex items-center justify-between">
+      <div class="flex items-center gap-x-3">
+        <div class="w-10 h-10 bg-gradient-to-br from-cyan-400 to-purple-500 rounded-2xl flex items-center justify-center">
+          <i class="fa-solid fa-eye text-white text-2xl"></i>
+        </div>
+        <div>
+          <span class="font-display text-3xl font-semibold tracking-tighter">VisionScan</span>
+          <span class="text-cyan-400 font-semibold">AI</span>
+        </div>
+      </div>
+      
+      <div class="flex items-center gap-x-2 text-sm">
+        <button onclick="showSection('home')" 
+                class="px-4 py-2 rounded-3xl hover:bg-slate-800 transition-colors flex items-center gap-x-2">
+          <i class="fa-solid fa-home w-4"></i>
+          <span class="hidden md:inline">Home</span>
+        </button>
+        <button onclick="showSection('object')" 
+                class="px-5 py-2 rounded-3xl hover:bg-slate-800 transition-colors flex items-center gap-x-2 font-medium">
+          <i class="fa-solid fa-camera w-4"></i>
+          <span>Object Scanner</span>
+        </button>
+        <button onclick="showSection('eye')" 
+                class="px-5 py-2 rounded-3xl hover:bg-slate-800 transition-colors flex items-center gap-x-2 font-medium">
+          <i class="fa-solid fa-eye w-4"></i>
+          <span>Eye Health</span>
+        </button>
+      </div>
+
+      <div class="flex items-center gap-x-3">
+        <div class="px-3 py-1.5 bg-slate-900 rounded-3xl text-xs flex items-center gap-x-1.5 border border-slate-700">
+          <div class="w-2 h-2 bg-emerald-400 rounded-full animate-pulse"></div>
+          <span class="text-emerald-400 text-xs font-medium">Demo v1.0</span>
+        </div>
+        <button onclick="window.open('https://github.com', '_blank')" 
+                class="flex items-center gap-x-2 px-4 py-2 text-sm bg-slate-800 hover:bg-slate-700 transition-colors rounded-3xl">
+          <i class="fa-brands fa-github"></i>
+          <span class="hidden md:inline text-xs">Source</span>
+        </button>
+      </div>
+    </div>
+  </nav>
+
+  <!-- HOME / LANDING -->
+  <div id="home" class="section active max-w-screen-xl mx-auto px-6 pt-12 pb-20">
+    <div class="max-w-3xl mx-auto text-center">
+      <div class="inline-flex items-center gap-x-2 px-4 py-1.5 rounded-3xl bg-slate-900 border border-slate-700 mb-6">
+        <i class="fa-solid fa-robot text-cyan-400"></i>
+        <span class="text-sm font-medium">Powered by on-device AI • No data leaves your device in demo mode</span>
+      </div>
+      
+      <h1 class="text-7xl md:text-7xl font-display font-semibold tracking-tighter leading-none mb-4">
+        Scan.<br>
+        <span class="bg-gradient-to-r from-cyan-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">Identify.</span><br>
+        Screen.
+      </h1>
+      <p class="text-2xl text-slate-400 max-w-md mx-auto">The universal AI vision app that sees the world — and helps screen eye health.</p>
+      
+      <div class="flex flex-col sm:flex-row gap-4 justify-center mt-10">
+        <button onclick="showSection('object')" 
+                class="px-8 py-4 bg-white text-slate-950 font-semibold rounded-3xl flex items-center justify-center gap-x-3 hover:scale-[1.02] active:scale-[0.985] transition-all text-lg shadow-xl shadow-cyan-500/20">
+          <i class="fa-solid fa-camera"></i>
+          <span>Launch Object Scanner</span>
+        </button>
+        <button onclick="showSection('eye')" 
+                class="px-8 py-4 bg-slate-800 hover:bg-slate-700 border border-slate-600 font-semibold rounded-3xl flex items-center justify-center gap-x-3 transition-all text-lg">
+          <i class="fa-solid fa-eye"></i>
+          <span>Try Eye Health Screener</span>
+        </button>
+      </div>
+      
+      <div class="mt-16 grid grid-cols-1 md:grid-cols-3 gap-4 max-w-4xl mx-auto">
+        <div class="bg-slate-900 border border-slate-800 p-6 rounded-3xl text-left">
+          <i class="fa-solid fa-globe text-3xl text-cyan-400 mb-4"></i>
+          <h3 class="font-semibold text-xl mb-1">Universal Object ID</h3>
+          <p class="text-sm text-slate-400">Real-time detection of 80+ everyday objects, people, vehicles, animals &amp; more using on-device AI.</p>
+        </div>
+        <div class="bg-slate-900 border border-slate-800 p-6 rounded-3xl text-left">
+          <i class="fa-solid fa-eye text-3xl text-purple-400 mb-4"></i>
+          <h3 class="font-semibold text-xl mb-1">Eye Health Screening</h3>
+          <p class="text-sm text-slate-400">Camera-based demo that analyzes eye images for potential indicators of common conditions.</p>
+        </div>
+        <div class="bg-slate-900 border border-slate-800 p-6 rounded-3xl text-left">
+          <i class="fa-solid fa-shield-halved text-3xl text-emerald-400 mb-4"></i>
+          <h3 class="font-semibold text-xl mb-1">Privacy First</h3>
+          <p class="text-sm text-slate-400">Everything runs in your browser. No images are uploaded in this demo version.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- OBJECT SCANNER SECTION -->
+  <div id="object" class="section max-w-screen-xl mx-auto px-6 py-8">
+    <div class="flex items-center justify-between mb-6">
+      <div>
+        <h2 class="text-4xl font-display font-semibold tracking-tight">Object &amp; Scene Scanner</h2>
+        <p class="text-slate-400">Point your camera at anything. Real AI identifies it instantly.</p>
+      </div>
+      <button onclick="showSection('home')" class="text-sm px-4 py-2 hover:bg-slate-800 rounded-3xl flex items-center gap-x-2">
+        <i class="fa-solid fa-arrow-left"></i> Back
+      </button>
+    </div>
+
+    <div class="grid lg:grid-cols-5 gap-6">
+      <!-- Camera Feed -->
+      <div class="lg:col-span-3">
+        <div class="bg-slate-900 border border-slate-700 rounded-3xl p-3 shadow-2xl">
+          <div class="relative rounded-3xl overflow-hidden bg-black aspect-video flex items-center justify-center" id="object-video-container">
+            <video id="object-video" class="w-full h-full object-cover" autoplay playsinline></video>
+            <canvas id="object-canvas" class="absolute top-0 left-0 w-full h-full pointer-events-none"></canvas>
+            
+            <!-- Overlay info -->
+            <div id="object-status" class="absolute top-4 left-4 px-4 py-1.5 bg-black/70 backdrop-blur-md text-xs font-mono rounded-3xl flex items-center gap-x-2">
+              <i class="fa-solid fa-video text-emerald-400"></i>
+              <span id="object-status-text">Camera ready</span>
+            </div>
+          </div>
+          
+          <div class="flex gap-3 mt-3">
+            <button onclick="startObjectCamera()" 
+                    class="flex-1 flex items-center justify-center gap-x-2 bg-emerald-600 hover:bg-emerald-500 transition-colors text-white font-semibold py-3.5 rounded-3xl">
+              <i class="fa-solid fa-video"></i>
+              <span>Start Camera</span>
+            </button>
+            <button onclick="stopObjectCamera()" 
+                    class="flex-1 flex items-center justify-center gap-x-2 bg-slate-700 hover:bg-slate-600 transition-colors font-semibold py-3.5 rounded-3xl">
+              <i class="fa-solid fa-stop"></i>
+              <span>Stop</span>
+            </button>
+            <button onclick="captureAndDetectObject()" 
+                    class="flex-1 flex items-center justify-center gap-x-2 bg-cyan-500 hover:bg-cyan-400 transition-colors text-slate-950 font-bold py-3.5 rounded-3xl">
+              <i class="fa-solid fa-magnifying-glass"></i>
+              <span>Identify</span>
+            </button>
+          </div>
+          
+          <div class="mt-3">
+            <label class="block text-xs text-slate-400 mb-1.5 px-1">Or upload an image</label>
+            <input type="file" id="object-upload" accept="image/*" 
+                   class="block w-full text-sm file:mr-4 file:py-2.5 file:px-5 file:rounded-3xl file:border-0 file:bg-slate-700 file:text-white hover:file:bg-slate-600 transition-colors"
+                   onchange="handleObjectUpload(event)">
+          </div>
+        </div>
+      </div>
+
+      <!-- Results -->
+      <div class="lg:col-span-2 bg-slate-900 border border-slate-700 rounded-3xl p-6">
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="font-semibold text-xl flex items-center gap-x-2">
+            <i class="fa-solid fa-list-check text-cyan-400"></i> 
+            Detections
+          </h3>
+          <span id="detection-count" class="text-xs px-3 py-1 bg-slate-800 rounded-3xl">0 items</span>
+        </div>
+        
+        <div id="object-results" class="space-y-3 min-h-[280px] max-h-[420px] overflow-auto pr-2">
+          <div class="text-center py-12 text-slate-500">
+            <i class="fa-solid fa-camera text-5xl mb-4 opacity-30"></i>
+            <p class="text-sm">Start camera or upload an image<br>then tap <strong>Identify</strong></p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- EYE HEALTH SCANNER SECTION -->
+  <div id="eye" class="section max-w-screen-xl mx-auto px-6 py-8">
+    <div class="flex items-center justify-between mb-6">
+      <div>
+        <h2 class="text-4xl font-display font-semibold tracking-tight">Eye Health AI Screener</h2>
+        <p class="text-slate-400">Demo mode — for educational purposes only</p>
+      </div>
+      <button onclick="showSection('home')" class="text-sm px-4 py-2 hover:bg-slate-800 rounded-3xl flex items-center gap-x-2">
+        <i class="fa-solid fa-arrow-left"></i> Back
+      </button>
+    </div>
+
+    <!-- Strong Disclaimer -->
+    <div class="medical-disclaimer mb-6 p-5 rounded-3xl text-sm">
+      <div class="flex gap-3">
+        <i class="fa-solid fa-exclamation-triangle text-red-400 mt-1"></i>
+        <div>
+          <strong class="text-red-300">CRITICAL DISCLAIMER:</strong> This is a <strong>simulated demonstration</strong> only. 
+          It does <strong>NOT</strong> provide medical diagnosis, screening, or advice. Results are generated for illustration purposes using basic image heuristics and randomness. 
+          Real eye disease detection requires professional medical equipment and doctors. <strong>Always consult a licensed ophthalmologist.</strong> Do not make health decisions based on this demo.
+        </div>
+      </div>
+    </div>
+
+    <div class="grid lg:grid-cols-5 gap-6">
+      <!-- Eye Capture -->
+      <div class="lg:col-span-3">
+        <div class="bg-slate-900 border border-slate-700 rounded-3xl p-3">
+          <div class="relative rounded-3xl overflow-hidden bg-black aspect-video flex items-center justify-center" id="eye-video-container">
+            <img id="eye-preview" class="max-h-full max-w-full object-contain hidden" alt="Eye preview">
+            <video id="eye-video" class="w-full h-full object-cover hidden" autoplay playsinline></video>
+            <canvas id="eye-canvas" class="absolute top-0 left-0 w-full h-full hidden"></canvas>
+            
+            <div id="eye-placeholder" class="text-center p-8">
+              <i class="fa-solid fa-eye text-6xl text-slate-700 mb-4"></i>
+              <p class="text-slate-400 text-sm">Capture or upload a clear close-up photo of an eye</p>
+            </div>
+          </div>
+          
+          <div class="grid grid-cols-2 gap-3 mt-3">
+            <button onclick="startEyeCamera()" 
+                    class="flex items-center justify-center gap-x-2 bg-purple-600 hover:bg-purple-500 py-3.5 rounded-3xl font-semibold transition-colors">
+              <i class="fa-solid fa-camera"></i>
+              <span>Capture Eye Photo</span>
+            </button>
+            <button onclick="stopEyeCamera()" 
+                    class="flex items-center justify-center gap-x-2 bg-slate-700 hover:bg-slate-600 py-3.5 rounded-3xl font-semibold transition-colors">
+              <i class="fa-solid fa-stop"></i>
+              <span>Stop Camera</span>
+            </button>
+          </div>
+          
+          <div class="mt-3">
+            <label class="block text-xs text-slate-400 mb-1.5 px-1">Upload eye image (or use examples below)</label>
+            <input type="file" id="eye-upload" accept="image/*" 
+                   class="block w-full text-sm file:mr-4 file:py-2.5 file:px-5 file:rounded-3xl file:border-0 file:bg-slate-700 file:text-white hover:file:bg-slate-600"
+                   onchange="handleEyeUpload(event)">
+          </div>
+          
+          <!-- Example buttons -->
+          <div class="mt-4">
+            <p class="text-xs text-slate-400 mb-2 px-1">Quick examples (illustrative):</p>
+            <div class="flex flex-wrap gap-2">
+              <button onclick="loadEyeExample(1)" class="text-xs px-4 py-1.5 bg-slate-800 hover:bg-slate-700 rounded-3xl transition-colors">Healthy Eye</button>
+              <button onclick="loadEyeExample(2)" class="text-xs px-4 py-1.5 bg-slate-800 hover:bg-slate-700 rounded-3xl transition-colors">Possible Vascular Changes</button>
+              <button onclick="loadEyeExample(3)" class="text-xs px-4 py-1.5 bg-slate-800 hover:bg-slate-700 rounded-3xl transition-colors">Simulated Lesions</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Eye Analysis Results -->
+      <div class="lg:col-span-2 bg-slate-900 border border-slate-700 rounded-3xl p-6 flex flex-col">
+        <div class="flex items-center justify-between mb-4">
+          <h3 class="font-semibold text-xl flex items-center gap-x-2">
+            <i class="fa-solid fa-chart-line text-purple-400"></i> 
+            AI Analysis
+          </h3>
+          <button onclick="analyzeEyeImage()" 
+                  class="px-6 py-2 bg-gradient-to-r from-purple-500 to-pink-500 hover:brightness-110 transition-all text-white text-sm font-bold rounded-3xl flex items-center gap-x-2">
+            <i class="fa-solid fa-magic"></i>
+            <span>Analyze Eye</span>
+          </button>
+        </div>
+        
+        <div id="eye-results" class="flex-1 overflow-auto">
+          <div class="h-full flex items-center justify-center text-center text-slate-500 py-8">
+            <div>
+              <i class="fa-solid fa-microscope text-4xl mb-3 opacity-40"></i>
+              <p class="text-sm">Upload or capture an eye image,<br>then tap <strong>Analyze Eye</strong></p>
+            </div>
+          </div>
+        </div>
+        
+        <div class="mt-auto pt-4 border-t border-slate-700 text-[10px] text-slate-500">
+          All processing happens in your browser. This is a demo.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <footer class="max-w-screen-xl mx-auto px-6 py-8 text-center text-xs text-slate-500 border-t border-slate-800 mt-12">
+    VisionScan AI Demo • Educational prototype only • Not a medical device • Built for demonstration purposes<br>
+    Object detection powered by TensorFlow.js COCO-SSD • Eye analysis is simulated
+  </footer>
+
+<script>
+// Tailwind script
+function initializeTailwind() {
+  document.documentElement.style.setProperty('--accent', '#00f5ff');
+}
+
+// Section switching
+function showSection(section) {
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  document.getElementById(section).classList.add('active');
+  
+  // Stop cameras when switching away
+  if (section !== 'object') stopObjectCamera();
+  if (section !== 'eye') stopEyeCamera();
+}
+
+// ==================== OBJECT SCANNER ====================
+let objectVideoStream = null;
+let objectModel = null;
+
+async function loadObjectModel() {
+  if (objectModel) return objectModel;
+  const status = document.getElementById('object-status-text');
+  status.textContent = 'Loading AI model...';
+  try {
+    objectModel = await cocoSsd.load();
+    status.textContent = 'AI ready';
+    return objectModel;
+  } catch (e) {
+    status.textContent = 'Model load failed';
+    console.error(e);
+    alert('Failed to load object detection model. Check your internet connection.');
+    return null;
+  }
+}
+
+async function startObjectCamera() {
+  const video = document.getElementById('object-video');
+  const container = document.getElementById('object-video-container');
+  
+  try {
+    if (objectVideoStream) stopObjectCamera();
+    
+    objectVideoStream = await navigator.mediaDevices.getUserMedia({ 
+      video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } } 
+    });
+    video.srcObject = objectVideoStream;
+    video.style.display = 'block';
+    container.style.background = 'black';
+    
+    document.getElementById('object-status-text').textContent = 'Live camera';
+  } catch (err) {
+    alert('Camera access denied or not available. Please use the upload option instead.');
+    console.error(err);
+  }
+}
+
+function stopObjectCamera() {
+  const video = document.getElementById('object-video');
+  if (objectVideoStream) {
+    objectVideoStream.getTracks().forEach(track => track.stop());
+    objectVideoStream = null;
+  }
+  video.srcObject = null;
+  video.style.display = 'none';
+  document.getElementById('object-status-text').textContent = 'Camera stopped';
+}
+
+async function captureAndDetectObject() {
+  const video = document.getElementById('object-video');
+  const canvas = document.getElementById('object-canvas');
+  const resultsContainer = document.getElementById('object-results');
+  
+  if (!video.srcObject && !document.getElementById('object-upload').files.length) {
+    alert('Please start the camera or upload an image first.');
+    return;
+  }
+  
+  const model = await loadObjectModel();
+  if (!model) return;
+  
+  // Create a temporary canvas from current video frame or use uploaded image
+  let source;
+  if (video.srcObject) {
+    source = video;
+  } else {
+    // uploaded image case handled separately
+    return;
+  }
+  
+  canvas.width = source.videoWidth || source.width;
+  canvas.height = source.videoHeight || source.height;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(source, 0, 0, canvas.width, canvas.height);
+  
+  // Run detection
+  const predictions = await model.detect(canvas);
+  
+  // Clear previous boxes
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(source, 0, 0, canvas.width, canvas.height);
+  
+  // Draw detections
+  resultsContainer.innerHTML = '';
+  let count = 0;
+  
+  predictions.forEach((pred, i) => {
+    if (pred.score < 0.45) return; // confidence threshold
+    
+    count++;
+    const [x, y, w, h] = pred.bbox;
+    
+    // Draw box
+    ctx.strokeStyle = '#00f5ff';
+    ctx.lineWidth = 3.5;
+    ctx.strokeRect(x, y, w, h);
+    
+    // Label background
+    const label = `${pred.class} ${Math.round(pred.score * 100)}%`;
+    ctx.font = 'bold 15px Inter, system-ui';
+    const textWidth = ctx.measureText(label).width;
+    
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
+    ctx.fillRect(x, y - 26, textWidth + 16, 24);
+    
+    ctx.fillStyle = '#00f5ff';
+    ctx.fillText(label, x + 8, y - 9);
+    
+    // Result card
+    const card = document.createElement('div');
+    card.className = `result-card bg-slate-800 border border-slate-600 p-3.5 rounded-2xl flex justify-between items-center`;
+    card.innerHTML = `
+      <div>
+        <div class="font-semibold capitalize">${pred.class}</div>
+        <div class="text-xs text-emerald-400">${Math.round(pred.score * 100)}% confidence</div>
+      </div>
+      <div class="text-right">
+        <i class="fa-solid fa-check-circle text-emerald-400 text-xl"></i>
+      </div>
+    `;
+    resultsContainer.appendChild(card);
+  });
+  
+  document.getElementById('detection-count').textContent = `${count} items detected`;
+  
+  if (count === 0) {
+    resultsContainer.innerHTML = `<div class="text-center py-8 text-slate-400 text-sm">No high-confidence objects detected. Try a different angle or object.</div>`;
+  }
+}
+
+function handleObjectUpload(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  
+  const reader = new FileReader();
+  reader.onload = async function(e) {
+    const img = new Image();
+    img.onload = async function() {
+      const canvas = document.getElementById('object-canvas');
+      const resultsContainer = document.getElementById('object-results');
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0);
+      
+      const model = await loadObjectModel();
+      if (!model) return;
+      
+      const predictions = await model.detect(img);
+      
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0);
+      
+      resultsContainer.innerHTML = '';
+      let count = 0;
+      
+      predictions.forEach(pred => {
+        if (pred.score < 0.45) return;
+        count++;
+        
+        const [x, y, w, h] = pred.bbox;
+        ctx.strokeStyle = '#00f5ff';
+        ctx.lineWidth = 3;
+        ctx.strokeRect(x, y, w, h);
+        
+        const label = `${pred.class} ${Math.round(pred.score * 100)}%`;
+        ctx.font = 'bold 14px Inter';
+        const tw = ctx.measureText(label).width;
+        ctx.fillStyle = 'rgba(15,23,42,0.9)';
+        ctx.fillRect(x, y-22, tw + 14, 20);
+        ctx.fillStyle = '#67f6ff';
+        ctx.fillText(label, x + 7, y - 7);
+        
+        const card = document.createElement('div');
+        card.className = `result-card bg-slate-800 border border-slate-600 p-3 rounded-2xl flex justify-between`;
+        card.innerHTML = `
+          <div>
+            <div class="font-semibold capitalize">${pred.class}</div>
+            <div class="text-xs text-emerald-400">${Math.round(pred.score * 100)}% confidence</div>
+          </div>
+        `;
+        resultsContainer.appendChild(card);
+      });
+      
+      document.getElementById('detection-count').textContent = `${count} items`;
+      if (count === 0) resultsContainer.innerHTML = `<p class="text-center text-sm py-6 text-slate-400">No confident detections found in this image.</p>`;
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+// ==================== EYE HEALTH SCANNER ====================
+let eyeVideoStream = null;
+
+function startEyeCamera() {
+  const video = document.getElementById('eye-video');
+  const placeholder = document.getElementById('eye-placeholder');
+  const preview = document.getElementById('eye-preview');
+  
+  placeholder.style.display = 'none';
+  preview.style.display = 'none';
+  video.style.display = 'block';
+  
+  navigator.mediaDevices.getUserMedia({ 
+    video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } } 
+  }).then(stream => {
+    eyeVideoStream = stream;
+    video.srcObject = stream;
+  }).catch(() => {
+    alert('Camera access failed. Please use the upload option.');
+    placeholder.style.display = 'block';
+    video.style.display = 'none';
+  });
+}
+
+function stopEyeCamera() {
+  const video = document.getElementById('eye-video');
+  if (eyeVideoStream) {
+    eyeVideoStream.getTracks().forEach(t => t.stop());
+    eyeVideoStream = null;
+  }
+  video.style.display = 'none';
+  document.getElementById('eye-placeholder').style.display = 'block';
+}
+
+function handleEyeUpload(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    const preview = document.getElementById('eye-preview');
+    const placeholder = document.getElementById('eye-placeholder');
+    const video = document.getElementById('eye-video');
+    
+    preview.src = e.target.result;
+    preview.style.display = 'block';
+    placeholder.style.display = 'none';
+    video.style.display = 'none';
+    
+    // Store for analysis
+    preview.dataset.imageData = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+function loadEyeExample(exampleNum) {
+  const preview = document.getElementById('eye-preview');
+  const placeholder = document.getElementById('eye-placeholder');
+  const video = document.getElementById('eye-video');
+  
+  placeholder.style.display = 'none';
+  video.style.display = 'none';
+  preview.style.display = 'block';
+  
+  // Using reliable public placeholder images (illustrative only)
+  let url = '';
+  if (exampleNum === 1) url = 'https://picsum.photos/id/1005/600/400'; // neutral/healthy-ish
+  else if (exampleNum === 2) url = 'https://picsum.photos/id/1011/600/400'; // slightly different
+  else if (exampleNum === 3) url = 'https://picsum.photos/id/160/600/400'; // another variation
+  
+  preview.src = url;
+  preview.dataset.imageData = url;
+  preview.onload = () => {
+    // ready for analysis
+  };
+}
+
+async function analyzeEyeImage() {
+  const preview = document.getElementById('eye-preview');
+  const resultsDiv = document.getElementById('eye-results');
+  
+  if (!preview.src || preview.style.display === 'none') {
+    alert('Please capture or upload an eye image first (or use one of the example buttons).');
+    return;
+  }
+  
+  resultsDiv.innerHTML = `
+    <div class="flex flex-col items-center justify-center py-8">
+      <div class="animate-spin w-9 h-9 border-4 border-purple-500 border-t-transparent rounded-full mb-4"></div>
+      <p class="text-sm text-purple-300">AI analyzing retinal patterns, vessels &amp; optic disc...</p>
+      <p class="text-[10px] text-slate-500 mt-1">(Demo simulation — 2–3 seconds)</p>
+    </div>
+  `;
+  
+  // Simulate processing delay + real pixel analysis
+  await new Promise(resolve => setTimeout(resolve, 1850));
+  
+  // Simple client-side feature extraction
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  canvas.width = 200;
+  canvas.height = 200;
+  ctx.drawImage(preview, 0, 0, 200, 200);
+  
+  const imageData = ctx.getImageData(0, 0, 200, 200);
+  const data = imageData.data;
+  
+  let totalR = 0, totalG = 0, totalB = 0, pixels = 0;
+  let bright = 0, dark = 0;
+  
+  for (let i = 0; i < data.length; i += 4) {
+    const r = data[i], g = data[i+1], b = data[i+2];
+    totalR += r; totalG += g; totalB += b; pixels++;
+    const brightness = (r + g + b) / 3;
+    if (brightness > 185) bright++;
+    if (brightness < 55) dark++;
+  }
+  
+  const avgR = totalR / pixels;
+  const rednessRatio = avgR / ((totalG + totalB) / 2 || 1);
+  const brightRatio = bright / pixels;
+  const darkRatio = dark / pixels;
+  
+  // Dynamic mock scoring influenced by image
+  const findings = [
+    { 
+      name: "Healthy retinal indicators", 
+      confidence: Math.min(92, 48 + (brightRatio * 80) + Math.random() * 12), 
+      type: "positive",
+      note: "Clear optic disc and vessel structure in simulation"
+    },
+    { 
+      name: "Possible microaneurysms / early DR signs", 
+      confidence: Math.max(8, Math.min(88, (rednessRatio - 0.95) * 55 + (darkRatio * 120) + Math.random() * 15)), 
+      type: "warning",
+      note: "Small red spots simulated in analysis"
+    },
+    { 
+      name: "Vascular changes / hypertensive indicators", 
+      confidence: Math.max(5, Math.min(79, (rednessRatio * 38) + Math.random() * 18)), 
+      type: "warning",
+      note: "Arteriolar narrowing simulation"
+    },
+    { 
+      name: "Optic disc / glaucoma risk indicators", 
+      confidence: Math.max(4, Math.min(71, (darkRatio * 95) + Math.random() * 10)), 
+      type: "warning",
+      note: "Cup-to-disc ratio approximation"
+    }
+  ];
+  
+  // Sort by confidence
+  findings.sort((a, b) => b.confidence - a.confidence);
+  
+  let html = `<div class="space-y-4">`;
+  
+  findings.forEach((f, idx) => {
+    const conf = Math.round(f.confidence);
+    const color = f.type === 'positive' ? 'emerald' : 'amber';
+    
+    html += `
+      <div class="result-card bg-slate-800 border border-slate-600 p-4 rounded-2xl">
+        <div class="flex justify-between items-start mb-1.5">
+          <div class="font-semibold text-[15px]">${f.name}</div>
+          <div class="text-xs px-3 py-0.5 rounded-2xl bg-\( {color}-900 text- \){color}-300 font-mono">${conf}%</div>
+        </div>
+        
+        <div class="h-2 bg-slate-700 rounded mb-2 overflow-hidden">
+          <div class="confidence-bar" style="width: ${conf}%"></div>
+        </div>
+        
+        <div class="text-xs text-slate-400">${f.note}</div>
+      </div>
+    `;
+  });
+  
+  html += `
+    <div class="mt-5 p-4 bg-red-950/60 border border-red-800 rounded-2xl text-xs">
+      <strong class="text-red-300">RECOMMENDATION:</strong><br>
+      This is a simulated demo result. Please schedule a professional eye examination with an ophthalmologist for accurate diagnosis and screening.
+    </div>
+  `;
+  
+  html += `</div>`;
+  
+  resultsDiv.innerHTML = html;
+}
+
+// Initialize everything
+function initializeApp() {
+  initializeTailwind();
+  
+  // Show home by default
+  document.getElementById('home').classList.add('active');
+  
+  // Keyboard hint
+  console.log('%c[VisionScan AI] Demo initialized. Camera works best on HTTPS (GitHub Pages).', 'color:#64748b');
+  
+  // Optional: preload model hint
+  setTimeout(() => {
+    const status = document.getElementById('object-status-text');
+    if (status && status.textContent === 'Camera ready') {
+      // silent preload possible but not necessary
+    }
+  }, 8000);
+}
+
+window.onload = initializeApp;
+</script>
+</body>
+            </html>
